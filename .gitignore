@@ -1,0 +1,28 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# SQLite database files
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Chat session data (contains conversation history - private)
+data/rooms/
+data/participants.json
+
+# Claude Code session data
+.claude/.threads/
+.claude/settings.local.json
+
+# OMC / Spec Workflow local state
+.omc/
+.spec-workflow/
+
+# Test helper scripts
+test-validator.cjs
+debug-validator.cjs
+
+# OS files
+.DS_Store
+Thumbs.db
