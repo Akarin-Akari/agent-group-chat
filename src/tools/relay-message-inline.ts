@@ -93,7 +93,9 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
 
   const fullPrompt = parts.join('\n');
 
-  // 4. Execute relay and store response
+  // 4. Execute relay and store response (cwd = room directory to avoid home dir scanning)
+  const fileStore = mgr.getFileStore();
+  const roomDir = fileStore.getRoomDir(room_id);
   return executeRelayAndStore(
     room_id,
     target,
@@ -101,5 +103,6 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
     fullPrompt,
     mgr,
     'inline',
+    roomDir,
   );
 };
