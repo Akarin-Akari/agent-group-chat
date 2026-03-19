@@ -292,12 +292,31 @@ function runCli(target: string, prompt: string, cwd?: string): Promise<string> {
     let stderrBytes = 0;
     let settled = false;
 
+    const effectiveCwd = cwd || process.env.USERPROFILE || process.env.HOME || undefined;
+
+    // Warn if cwd looks like home directory or MCP server directory (likely misconfigured)
+    if (effectiveCwd) {
+      const home = process.env.USERPROFILE || process.env.HOME || '';
+      const serverDir = path.resolve(__dirname, '..');
+      if (effectiveCwd === home) {
+        console.error(
+          `[cli-relay] ⚠️ cwd is user home directory (${effectiveCwd}). ` +
+          `Target AI will scan the entire home dir. Consider passing a project-specific cwd via the relay tool's cwd parameter.`,
+        );
+      } else if (effectiveCwd === serverDir) {
+        console.error(
+          `[cli-relay] ⚠️ cwd is MCP server directory (${effectiveCwd}). ` +
+          `Target AI will see group-chat source, not user's project. Consider passing the project cwd via the relay tool's cwd parameter.`,
+        );
+      }
+    }
+
     const proc = spawn(command, args, {
       shell: true,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, ...targetEnv },
-      cwd: cwd || process.env.USERPROFILE || process.env.HOME || undefined,
+      cwd: effectiveCwd,
     });
 
     // Collect stdout (capped at MAX_BUFFER_BYTES)

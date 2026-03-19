@@ -84,18 +84,25 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
   const effectiveCwd = userCwd || process.cwd();
 
   // 4. Build inline prompt with workspace context
+  const fileStore = mgr.getFileStore();
+  const roomDir = fileStore.getRoomDir(room_id);
   const parts: string[] = [
+    `## Identity`,
     `You are "${target}" participating in a multi-AI group chat. The other participants are AI models too.`,
     ``,
+    `## Conversation`,
+    `Room directory: ${roomDir}`,
+    `(Room dir contains meta.json with participant info and room config)`,
+    ``,
+    `### Chat History`,
+    contextContent,
+    `\n---`,
+    ``,
     `## Workspace`,
-    `Your working directory is: ${effectiveCwd}`,
+    `Working directory: ${effectiveCwd}`,
     `This is the same project workspace as the orchestrator (Claude).`,
     `You have full access to read source code, configs, docs, and any other files here.`,
     `If the discussion involves code, feel free to explore the codebase to provide informed analysis.`,
-    ``,
-    `## Conversation History`,
-    contextContent,
-    `\n---`,
   ];
 
   if (prompt) {

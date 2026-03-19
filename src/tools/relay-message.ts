@@ -80,17 +80,21 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
   //    Goal: target AI shares the same workspace as the orchestrator.
   const effectiveCwd = userCwd || process.cwd();
 
-  // 4. Build prompt with absolute chat.md path + workspace exploration encouragement
+  // 4. Build prompt with absolute paths + workspace exploration encouragement
+  const roomDir = fileStore.getRoomDir(room_id);
   const parts: string[] = [
+    `## Identity`,
     `You are "${target}" participating in a multi-AI group chat named "${room.name}".`,
     `The other participants are AI models too.`,
     ``,
-    `## Context`,
-    `Your conversation history is at: ${chatPath}`,
-    `Read this file first to understand what has been discussed.`,
+    `## Conversation`,
+    `Chat history file: ${chatPath}`,
+    `Room directory: ${roomDir}`,
+    `(Room dir contains meta.json with participant info and room config)`,
+    `Read the chat history file first to understand what has been discussed.`,
     ``,
     `## Workspace`,
-    `Your working directory is: ${effectiveCwd}`,
+    `Working directory: ${effectiveCwd}`,
     `This is the same project workspace as the orchestrator (Claude).`,
     `You have full access to read source code, configs, docs, and any other files here.`,
     `If the discussion involves code, feel free to explore the codebase to provide informed analysis.`,
