@@ -40,14 +40,20 @@ export const toolDefinition: ToolDefinition = {
         type: 'number',
         description: 'Maximum number of recent messages to include (default: 30)',
       },
+      cwd: {
+        type: 'string',
+        description:
+          'Working directory for the target CLI (default: project root). ' +
+          'Set this to the project directory so the target AI can explore source code.',
+      },
     },
     required: ['room_id', 'target'],
   },
 };
 
 export const toolHandler: ToolHandler = async (invocation, manager) => {
-  const input = invocation.input as unknown as RelayInput & { max_context_messages?: number };
-  const { room_id, target, prompt, max_context_messages } = input;
+  const input = invocation.input as unknown as RelayInput & { max_context_messages?: number; cwd?: string };
+  const { room_id, target, prompt, max_context_messages, cwd: userCwd } = input;
 
   // Cast manager to impl to access getFileStore()
   const mgr = manager as GroupChatManagerImpl;
@@ -74,28 +80,38 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
     };
   }
 
-  // 3. Build inline prompt
+  // 3. Determine working directory (same logic as file_ref mode)
+  const effectiveCwd = userCwd || process.cwd();
+
+  // 4. Build inline prompt with workspace context
   const parts: string[] = [
     `You are "${target}" participating in a multi-AI group chat. The other participants are AI models too.`,
-    `\nHere is the conversation so far:\n`,
+    ``,
+    `## Workspace`,
+    `Your working directory is: ${effectiveCwd}`,
+    `This is the same project workspace as the orchestrator (Claude).`,
+    `You have full access to read source code, configs, docs, and any other files here.`,
+    `If the discussion involves code, feel free to explore the codebase to provide informed analysis.`,
+    ``,
+    `## Conversation History`,
     contextContent,
     `\n---`,
   ];
 
   if (prompt) {
-    parts.push(`\nThe orchestrator (Claude) asks: ${prompt}`);
+    parts.push(`\n## Task`, `The orchestrator (Claude) asks: ${prompt}`);
   }
 
   parts.push(
-    `\nPlease respond naturally and concisely as a participant in this group chat. ` +
+    ``,
+    `## Response Guidelines`,
+    `Respond naturally and concisely as a participant in this group chat.`,
     `Do NOT repeat or summarize the conversation. Just give your own response/analysis/opinion.`,
   );
 
   const fullPrompt = parts.join('\n');
 
-  // 4. Execute relay and store response (cwd = room directory to avoid home dir scanning)
-  const fileStore = mgr.getFileStore();
-  const roomDir = fileStore.getRoomDir(room_id);
+  // 5. Execute relay and store response (cwd = project workspace)
   return executeRelayAndStore(
     room_id,
     target,
@@ -103,6 +119,6 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
     fullPrompt,
     mgr,
     'inline',
-    roomDir,
+    effectiveCwd,
   );
 };

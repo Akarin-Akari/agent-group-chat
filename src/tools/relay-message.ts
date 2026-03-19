@@ -6,11 +6,13 @@ import { validateRelay, executeRelayAndStore, RelayInput } from './relay-common.
 /**
  * relay_message — Workspace file reference mode (preferred).
  *
- * Sets the spawned CLI's cwd to the room directory so it can read chat.md directly.
- * The prompt is minimal (~200 tokens): just instructions to read chat.md.
- * This drastically reduces token consumption and eliminates prompt bias.
+ * Spawns the CLI with cwd set to the project working directory (same as the
+ * orchestrator) so the target AI shares the same codebase context.  The prompt
+ * tells it the absolute path to chat.md for conversation history.
  *
- * Falls back to inline mode if file_ref is not supported by the target.
+ * This gives the target AI two superpowers:
+ *   1. It can read chat.md to understand the group discussion.
+ *   2. It can freely explore the project source code in its working directory.
  */
 
 export const toolDefinition: ToolDefinition = {
@@ -38,14 +40,20 @@ export const toolDefinition: ToolDefinition = {
           'Optional additional instruction or question for the target AI. ' +
           'Room context is provided via chat.md file reference.',
       },
+      cwd: {
+        type: 'string',
+        description:
+          'Working directory for the target CLI (default: project root). ' +
+          'Set this to the project directory so the target AI can explore source code.',
+      },
     },
     required: ['room_id', 'target'],
   },
 };
 
 export const toolHandler: ToolHandler = async (invocation, manager) => {
-  const input = invocation.input as unknown as RelayInput;
-  const { room_id, target, prompt } = input;
+  const input = invocation.input as unknown as RelayInput & { cwd?: string };
+  const { room_id, target, prompt, cwd: userCwd } = input;
 
   // Cast manager to impl to access getFileStore()
   const mgr = manager as GroupChatManagerImpl;
@@ -56,7 +64,7 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
     return validation.result;
   }
 
-  // 2. Verify room exists and get chat file path
+  // 2. Verify room exists and get chat file path (absolute)
   const fileStore = mgr.getFileStore();
   const chatPath = fileStore.getChatFilePath(room_id);
   const room = fileStore.getRoom(room_id);
@@ -67,31 +75,41 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
     };
   }
 
-  // 3. Build minimal prompt (workspace file_ref mode)
-  // The CLI process will have cwd set to the room directory,
-  // so it can read ./chat.md directly.
+  // 3. Determine working directory:
+  //    Priority: user-specified cwd > project root (process.cwd()) > room dir (fallback)
+  //    Goal: target AI shares the same workspace as the orchestrator.
+  const effectiveCwd = userCwd || process.cwd();
+
+  // 4. Build prompt with absolute chat.md path + workspace exploration encouragement
   const parts: string[] = [
     `You are "${target}" participating in a multi-AI group chat named "${room.name}".`,
     `The other participants are AI models too.`,
     ``,
-    `Your chat history is in the file "chat.md" in your current working directory.`,
-    `Read it to understand the conversation context, then provide your response.`,
+    `## Context`,
+    `Your conversation history is at: ${chatPath}`,
+    `Read this file first to understand what has been discussed.`,
+    ``,
+    `## Workspace`,
+    `Your working directory is: ${effectiveCwd}`,
+    `This is the same project workspace as the orchestrator (Claude).`,
+    `You have full access to read source code, configs, docs, and any other files here.`,
+    `If the discussion involves code, feel free to explore the codebase to provide informed analysis.`,
   ];
 
   if (prompt) {
-    parts.push(``, `The orchestrator (Claude) asks: ${prompt}`);
+    parts.push(``, `## Task`, `The orchestrator (Claude) asks: ${prompt}`);
   }
 
   parts.push(
     ``,
-    `Please respond naturally and concisely as a participant in this group chat.`,
+    `## Response Guidelines`,
+    `Respond naturally and concisely as a participant in this group chat.`,
     `Do NOT repeat or summarize the conversation. Just give your own response/analysis/opinion.`,
   );
 
   const fullPrompt = parts.join('\n');
 
-  // 4. Execute relay and store response (cwd = room directory for file_ref)
-  const roomDir = fileStore.getRoomDir(room_id);
+  // 5. Execute relay and store response
   return executeRelayAndStore(
     room_id,
     target,
@@ -99,6 +117,6 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
     fullPrompt,
     mgr,
     'file_ref',
-    roomDir,
+    effectiveCwd,
   );
 };
