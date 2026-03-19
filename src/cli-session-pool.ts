@@ -22,9 +22,18 @@
  *     c) The alternative (persistent sessions) doesn't work with pipe stdio
  */
 
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+/**
+ * Maximum bytes to accumulate from stdout/stderr per CLI spawn.
+ * Prevents unbounded memory growth when CLI produces excessive output
+ * (e.g., Gemini scanning home directory, Codex loading 30+ MCP servers).
+ */
+const MAX_BUFFER_BYTES = 5 * 1024 * 1024; // 5 MB
 
 // ─── Types ────────────────────────────────────────────────���─────────────────
 
@@ -224,6 +233,37 @@ const CLI_CONFIGS: Record<string, CliConfig> = {
   },
 };
 
+// ─── Process Cleanup ─────────────────────────────────────────────────────────
+
+/**
+ * Kill a process and its entire child tree.
+ *
+ * On Windows, `proc.kill()` only kills the immediate process (cmd.exe shell),
+ * leaving the actual CLI child process alive as a zombie. We use `taskkill /T`
+ * to kill the entire tree. On Unix, SIGTERM propagates naturally.
+ */
+function killProcessTree(pid: number | undefined): void {
+  if (!pid) return;
+
+  try {
+    if (process.platform === 'win32') {
+      // /F = force, /T = tree (kill child processes), /PID = target
+      execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', timeout: 5000 });
+      console.error(`[cli-relay] 🔪 Killed process tree (PID ${pid})`);
+    } else {
+      process.kill(-pid, 'SIGTERM'); // Negative PID = process group
+      console.error(`[cli-relay] 🔪 Killed process group (PID ${pid})`);
+    }
+  } catch {
+    // Process may have already exited — ignore
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // Already dead
+    }
+  }
+}
+
 // ─── One-Shot Spawn ─────────────────────────────────────────────────────────
 
 /**
@@ -248,6 +288,8 @@ function runCli(target: string, prompt: string, cwd?: string): Promise<string> {
 
     let stdout = '';
     let stderr = '';
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
     let settled = false;
 
     const proc = spawn(command, args, {
@@ -258,14 +300,22 @@ function runCli(target: string, prompt: string, cwd?: string): Promise<string> {
       cwd: cwd || process.env.USERPROFILE || process.env.HOME || undefined,
     });
 
-    // Collect stdout
+    // Collect stdout (capped at MAX_BUFFER_BYTES)
     proc.stdout?.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf-8');
+      if (stdoutBytes < MAX_BUFFER_BYTES) {
+        const str = chunk.toString('utf-8');
+        stdout += str;
+        stdoutBytes += chunk.length;
+      }
     });
 
-    // Collect stderr
+    // Collect stderr (capped at MAX_BUFFER_BYTES)
     proc.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf-8');
+      if (stderrBytes < MAX_BUFFER_BYTES) {
+        const str = chunk.toString('utf-8');
+        stderr += str;
+        stderrBytes += chunk.length;
+      }
     });
 
     // Timeout guard
@@ -284,9 +334,12 @@ function runCli(target: string, prompt: string, cwd?: string): Promise<string> {
           reject(new Error(`${target} timed out after ${timeoutMs / 1000}s`));
         }
 
-        try {
-          proc.kill();
-        } catch {}
+        // Clean up: remove stream listeners to stop memory accumulation
+        proc.stdout?.removeAllListeners('data');
+        proc.stderr?.removeAllListeners('data');
+
+        // Kill the process tree (shell: true spawns via cmd.exe on Windows)
+        killProcessTree(proc.pid);
       }
     }, timeoutMs);
 
@@ -295,6 +348,10 @@ function runCli(target: string, prompt: string, cwd?: string): Promise<string> {
       clearTimeout(timer);
       if (settled) return;
       settled = true;
+
+      // Clean up stream listeners
+      proc.stdout?.removeAllListeners('data');
+      proc.stderr?.removeAllListeners('data');
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.error(
