@@ -15,7 +15,34 @@ When using multiple AI models together (Claude Code + Codex + Gemini), there's n
 - **Maintain persistent history** — context is lost between sessions
 - **Collaborate on the same topic** — no shared "room" concept exists
 
-Current workarounds (copy-pasting, manual context injection) are tedious, error-prone, and waste tokens by duplicating context.
+### Why Existing Tools Fall Short
+
+Existing multi-model collaboration tools each have structural limitations:
+
+**Oh My ClaudeCode (OMC)** uses a **star topology** — Claude sits at the center and can talk to Codex and Gemini individually, but Codex and Gemini are completely unaware of each other. When Claude relays to Codex, Codex has no idea what Gemini said, and vice versa. Each relay is a stateless one-shot call with no shared history. This means Claude must manually summarize and re-inject context every time, wasting tokens and losing nuance.
+
+```
+        OMC Star Topology               Group Chat Mesh Topology
+
+      Codex ← → Claude ← → Gemini       Codex ← → chat.md ← → Gemini
+                  ↑                            ↖      ↑      ↗
+                  |                              Claude
+          (hub, single point)              (all read the same file)
+     Codex ✗ Gemini (invisible)         Codex ↔ Gemini (via shared context)
+```
+
+**Claude Code Bridge (CCB)** solves the isolation problem by piping messages through external terminal infrastructure (tmux sessions, split terminals, named pipes). While functional, it requires a heavy setup — WSL + tmux + bridge scripts — and the communication channel lives outside the coding environment. It's a system-level integration when what you really need is an application-level one.
+
+**Agent Group Chat** takes a different approach: instead of routing messages through a central hub or external terminals, all participants read and write to the **same Markdown file** (`chat.md`). This creates a de facto mesh topology where every model sees every message, including messages from models it has never directly communicated with. The entire system runs as a lightweight MCP server inside Claude Code — no external processes, no terminal infrastructure, no manual context forwarding.
+
+| | OMC | CCB | **Group Chat** |
+|---|:---:|:---:|:---:|
+| Topology | Star (Claude-centric) | Bridge (terminal pipes) | **Mesh (shared file)** |
+| Codex sees Gemini's messages? | No | Depends on setup | **Yes, always** |
+| Persistent history | No (stateless relays) | Partial (terminal scrollback) | **Yes (chat.md)** |
+| External dependencies | None | tmux + WSL + scripts | **None** |
+| Setup complexity | Low | High | **Low** |
+| Token overhead per relay | High (re-inject context) | Medium (pipe forwarding) | **Low (read from disk)** |
 
 ## The Solution
 
