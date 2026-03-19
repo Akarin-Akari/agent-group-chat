@@ -1,5 +1,7 @@
 # Agent Group Chat
 
+**[简体中文](./README.zh-CN.md)** | English
+
 A **Model Context Protocol (MCP) server** that enables multiple AI models (Claude, Codex, Gemini) to collaborate in shared chat rooms with persistent context.
 
 > Think of it as "Slack for AI agents" — create rooms, add participants, relay messages between models, and maintain shared conversation history that any model can read.
