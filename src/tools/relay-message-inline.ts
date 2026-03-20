@@ -83,13 +83,17 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
   // 3. Determine working directory (same logic as file_ref mode)
   const effectiveCwd = userCwd || process.cwd();
 
-  // 4. Build inline prompt with workspace context
-  // P0: Explicit no-write directive. P3: Do NOT expose room directory path.
+  // 4. Build inline prompt — room-aware + workspace access + sandboxed write protection
+  const fileStore = mgr.getFileStore();
+  const roomDir = fileStore.getRoomDir(room_id);
   const parts: string[] = [
     `## Identity`,
     `You are "${target}" participating in a multi-AI group chat. The other participants are AI models too.`,
     ``,
-    `## Conversation (provided inline, READ-ONLY)`,
+    `## Conversation`,
+    `Room directory: ${roomDir}`,
+    ``,
+    `### Chat History`,
     contextContent,
     `\n---`,
     ``,
@@ -99,10 +103,9 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
     `You have full access to read source code, configs, docs, and any other files in the workspace.`,
     `If the discussion involves code, feel free to explore the codebase to provide informed analysis.`,
     ``,
-    `## CRITICAL RULES`,
+    `## Response Rules`,
     `- Your response MUST be written to stdout ONLY.`,
-    `- DO NOT write, modify, overwrite, summarize-into, or delete any chat history files.`,
-    `- DO NOT create any new files to store your response. Just output to stdout.`,
+    `- DO NOT write, modify, or delete any files in the room directory. They are managed by the MCP server.`,
   ];
 
   if (prompt) {

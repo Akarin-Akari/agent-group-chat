@@ -80,16 +80,18 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
   //    Goal: target AI shares the same workspace as the orchestrator.
   const effectiveCwd = userCwd || process.cwd();
 
-  // 4. Build prompt with absolute paths + workspace exploration encouragement
-  // P0: Explicit no-write directive. P3: Do NOT expose room directory path.
+  // 4. Build prompt — room-aware + workspace access + sandboxed write protection
+  const roomDir = fileStore.getRoomDir(room_id);
   const parts: string[] = [
     `## Identity`,
     `You are "${target}" participating in a multi-AI group chat named "${room.name}".`,
     `The other participants are AI models too.`,
     ``,
     `## Conversation`,
-    `Chat history file (READ-ONLY): ${chatPath}`,
-    `Read this file first to understand what has been discussed.`,
+    `Chat history file: ${chatPath}`,
+    `Room directory: ${roomDir}`,
+    `Read the chat history file first to understand what has been discussed.`,
+    `You can also read meta.json in the room directory for participant info.`,
     ``,
     `## Workspace`,
     `Working directory: ${effectiveCwd}`,
@@ -97,11 +99,9 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
     `You have full access to read source code, configs, docs, and any other files in the workspace.`,
     `If the discussion involves code, feel free to explore the codebase to provide informed analysis.`,
     ``,
-    `## CRITICAL RULES`,
+    `## Response Rules`,
     `- Your response MUST be written to stdout ONLY.`,
-    `- DO NOT write, modify, overwrite, summarize-into, or delete the chat history file or any file near it.`,
-    `- DO NOT create any new files to store your response. Just output to stdout.`,
-    `- The chat history file is strictly READ-ONLY. Modifying it will corrupt the shared conversation.`,
+    `- DO NOT write, modify, or delete any files in the room directory. They are managed by the MCP server.`,
   ];
 
   if (prompt) {

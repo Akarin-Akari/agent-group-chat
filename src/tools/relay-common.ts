@@ -12,7 +12,6 @@ import { CliSessionPool } from '../cli-session-pool.js';
 import { GroupChatManagerImpl } from '../manager.js';
 import { ToolResult } from '../types/index.js';
 import { validateRelayResponse } from './response-validator.js';
-import { createHash } from 'crypto';
 import fs from 'fs';
 
 export interface RelayInput {
@@ -88,20 +87,19 @@ export async function executeRelayAndStore(
   console.error(`[group-chat]    Prompt length: ${fullPrompt.length} chars`);
   const startTime = Date.now();
 
-  // ── P1+P2: Pre-relay integrity protection ────────────────────────────
-  // Snapshot chat.md hash + backup before relay to detect/recover tampering
+  // ── Pre-relay backup ──────────────────────────────────────────────────
+  // Snapshot chat.md before relay for recovery if anything goes wrong.
+  // Both Codex (--sandbox read-only) and Gemini (--sandbox --approval-mode plan)
+  // are sandboxed, but backup provides defense-in-depth.
   const fileStore = manager.getFileStore();
   const chatPath = fileStore.getChatFilePath(roomId);
-  let preRelayHash = '';
   const backupPath = chatPath + '.pre-relay';
   try {
     if (fs.existsSync(chatPath)) {
-      const content = fs.readFileSync(chatPath);
-      preRelayHash = createHash('sha256').update(content).digest('hex');
       fs.copyFileSync(chatPath, backupPath);
     }
   } catch (err: any) {
-    console.error(`[group-chat] ⚠️ Pre-relay snapshot failed: ${err.message}`);
+    console.error(`[group-chat] ⚠️ Pre-relay backup failed: ${err.message}`);
   }
 
   let response: string;
@@ -109,6 +107,8 @@ export async function executeRelayAndStore(
     response = await pool.relay(target, fullPrompt, cwd);
   } catch (err: any) {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    // Clean up backup on failure
+    try { if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath); } catch {}
     return {
       message:
         `❌ ${target} CLI relay failed after ${elapsed}s: ${err.message}\n\n` +
@@ -120,45 +120,7 @@ export async function executeRelayAndStore(
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-  // ── P1: Post-relay tamper detection ──────────────────────────────────
-  // Verify chat.md was not modified by the target CLI during relay
-  if (preRelayHash) {
-    try {
-      const postContent = fs.readFileSync(chatPath);
-      const postRelayHash = createHash('sha256').update(postContent).digest('hex');
-      if (postRelayHash !== preRelayHash) {
-        console.error(
-          `[group-chat] 🚨 TAMPER DETECTED: chat.md was modified during relay by ${target}!` +
-          ` Pre-hash: ${preRelayHash.slice(0, 12)}... Post-hash: ${postRelayHash.slice(0, 12)}...`,
-        );
-        // P2: Auto-recover from backup
-        if (fs.existsSync(backupPath)) {
-          fs.copyFileSync(backupPath, chatPath);
-          console.error(`[group-chat] 🔧 Auto-recovered chat.md from pre-relay backup`);
-        }
-        // Clean up backup
-        try { fs.unlinkSync(backupPath); } catch {}
-        return {
-          message:
-            `🚨 **TAMPER DETECTED**: \`${target}\` modified chat.md during relay!\n\n` +
-            `The file has been automatically recovered from backup.\n` +
-            `The relay response was NOT stored.\n\n` +
-            `**Response from ${target}** (for manual review):\n${response}\n\n` +
-            `---\n📊 Elapsed: ${elapsed}s | Mode: ${mode}`,
-          data: {
-            tamper_detected: true,
-            recovered: true,
-            target,
-            response,
-            elapsed_seconds: parseFloat(elapsed),
-          },
-        };
-      }
-    } catch (err: any) {
-      console.error(`[group-chat] ⚠️ Post-relay hash check failed: ${err.message}`);
-    }
-  }
-  // Clean up backup on success
+  // Clean up backup on success (relay completed, no crash)
   try { if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath); } catch {}
 
   // ── Layer 1: Heuristic response gate ───────────────────────────────────

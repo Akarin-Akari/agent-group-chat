@@ -226,7 +226,7 @@ const CLI_CONFIGS: Record<string, CliConfig> = {
   },
   gemini: {
     command: 'gemini',
-    args: [],
+    args: ['--sandbox', '--approval-mode', 'plan'],
     responseFrom: 'stdout',
     extractResponse: extractGeminiResponse,
     timeoutMs: 300_000, // 5 min max (Gemini may use deep thinking + web search)
