@@ -84,25 +84,25 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
   const effectiveCwd = userCwd || process.cwd();
 
   // 4. Build inline prompt with workspace context
-  const fileStore = mgr.getFileStore();
-  const roomDir = fileStore.getRoomDir(room_id);
+  // P0: Explicit no-write directive. P3: Do NOT expose room directory path.
   const parts: string[] = [
     `## Identity`,
     `You are "${target}" participating in a multi-AI group chat. The other participants are AI models too.`,
     ``,
-    `## Conversation`,
-    `Room directory: ${roomDir}`,
-    `(Room dir contains meta.json with participant info and room config)`,
-    ``,
-    `### Chat History`,
+    `## Conversation (provided inline, READ-ONLY)`,
     contextContent,
     `\n---`,
     ``,
     `## Workspace`,
     `Working directory: ${effectiveCwd}`,
     `This is the same project workspace as the orchestrator (Claude).`,
-    `You have full access to read source code, configs, docs, and any other files here.`,
+    `You have full access to read source code, configs, docs, and any other files in the workspace.`,
     `If the discussion involves code, feel free to explore the codebase to provide informed analysis.`,
+    ``,
+    `## CRITICAL RULES`,
+    `- Your response MUST be written to stdout ONLY.`,
+    `- DO NOT write, modify, overwrite, summarize-into, or delete any chat history files.`,
+    `- DO NOT create any new files to store your response. Just output to stdout.`,
   ];
 
   if (prompt) {

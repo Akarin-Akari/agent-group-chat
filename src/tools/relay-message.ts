@@ -81,23 +81,27 @@ export const toolHandler: ToolHandler = async (invocation, manager) => {
   const effectiveCwd = userCwd || process.cwd();
 
   // 4. Build prompt with absolute paths + workspace exploration encouragement
-  const roomDir = fileStore.getRoomDir(room_id);
+  // P0: Explicit no-write directive. P3: Do NOT expose room directory path.
   const parts: string[] = [
     `## Identity`,
     `You are "${target}" participating in a multi-AI group chat named "${room.name}".`,
     `The other participants are AI models too.`,
     ``,
     `## Conversation`,
-    `Chat history file: ${chatPath}`,
-    `Room directory: ${roomDir}`,
-    `(Room dir contains meta.json with participant info and room config)`,
-    `Read the chat history file first to understand what has been discussed.`,
+    `Chat history file (READ-ONLY): ${chatPath}`,
+    `Read this file first to understand what has been discussed.`,
     ``,
     `## Workspace`,
     `Working directory: ${effectiveCwd}`,
     `This is the same project workspace as the orchestrator (Claude).`,
-    `You have full access to read source code, configs, docs, and any other files here.`,
+    `You have full access to read source code, configs, docs, and any other files in the workspace.`,
     `If the discussion involves code, feel free to explore the codebase to provide informed analysis.`,
+    ``,
+    `## CRITICAL RULES`,
+    `- Your response MUST be written to stdout ONLY.`,
+    `- DO NOT write, modify, overwrite, summarize-into, or delete the chat history file or any file near it.`,
+    `- DO NOT create any new files to store your response. Just output to stdout.`,
+    `- The chat history file is strictly READ-ONLY. Modifying it will corrupt the shared conversation.`,
   ];
 
   if (prompt) {
