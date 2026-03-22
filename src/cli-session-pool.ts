@@ -256,15 +256,15 @@ const CLI_CONFIGS: Record<string, CliConfig> = {
     args: ['exec', '--sandbox', 'read-only', '--skip-git-repo-check'],
     responseFrom: 'stderr',
     extractResponse: extractCodexResponse,
-    timeoutMs: 300_000, // 5 min max per call
+    timeoutMs: 0, // no timeout — complex tasks (web search + analysis) need unlimited time
     env: { CODEX_HOME: CODEX_MINIMAL_HOME },
   },
   gemini: {
     command: 'gemini',
-    args: ['--model', GEMINI_MODEL, '--approval-mode', 'plan'],
+    args: ['--model', GEMINI_MODEL, '--approval-mode', 'yolo'],
     responseFrom: 'stdout',
     extractResponse: extractGeminiResponse,
-    timeoutMs: 300_000, // 5 min max (Gemini may use deep thinking + web search)
+    timeoutMs: 0, // no timeout — Gemini deep thinking + web search can take long
   },
 };
 
@@ -372,8 +372,8 @@ function runCli(target: string, prompt: string, cwd?: string): Promise<string> {
       }
     });
 
-    // Timeout guard
-    const timer = setTimeout(() => {
+    // Timeout guard (skip if timeoutMs is 0 = no timeout)
+    const timer = timeoutMs > 0 ? setTimeout(() => {
       if (!settled) {
         settled = true;
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -395,11 +395,11 @@ function runCli(target: string, prompt: string, cwd?: string): Promise<string> {
         // Kill the process tree (shell: true spawns via cmd.exe on Windows)
         killProcessTree(proc.pid);
       }
-    }, timeoutMs);
+    }, timeoutMs) : null;
 
     // Process exit
     proc.on('close', (code) => {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       if (settled) return;
       settled = true;
 
@@ -433,7 +433,7 @@ function runCli(target: string, prompt: string, cwd?: string): Promise<string> {
     });
 
     proc.on('error', (err) => {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       if (settled) return;
       settled = true;
       reject(new Error(`Failed to spawn ${target}: ${err.message}`));
