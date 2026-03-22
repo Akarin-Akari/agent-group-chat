@@ -1,0 +1,53 @@
+# Gemini CLI Policy for Group Chat Relay
+# Loaded via --policy flag, does NOT modify user's global config.
+#
+# Goal: Allow read + search + tool execution, deny file writes.
+# Used with --approval-mode yolo so all allowed tools auto-execute.
+
+# ── Allow: Read-only tools (always) ──────────────────────────────────────────
+
+[[rule]]
+toolName = ["read_file", "glob", "grep_search", "list_directory"]
+decision = "allow"
+priority = 900
+
+# ── Allow: Web search and fetch (core capability) ───────────────────────────
+
+[[rule]]
+toolName = ["web_search", "web_fetch", "url_fetch"]
+decision = "allow"
+priority = 900
+
+# ── Allow: Shell commands that only read ─────────────────────────────────────
+
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = ["cat ", "head ", "tail ", "type ", "wc ", "ls ", "dir ", "find ", "rg ", "grep ", "git log", "git diff", "git status", "git show", "git blame", "node -e", "python -c", "echo "]
+decision = "allow"
+priority = 800
+
+# ── Deny: File write tools ──────────────────────────────────────────────────
+
+[[rule]]
+toolName = ["write_file", "replace", "edit_file", "create_file", "delete_file", "move_file", "rename_file"]
+decision = "deny"
+priority = 950
+deny_message = "File writes are blocked in group-chat relay mode. Respond via stdout only."
+
+# ── Deny: Destructive shell commands ─────────────────────────────────────────
+
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = ["rm ", "del ", "rmdir ", "mv ", "move ", "cp ", "copy ", "git push", "git reset", "git checkout", "git clean", "git rebase"]
+decision = "deny"
+priority = 950
+deny_message = "Destructive commands are blocked in group-chat relay mode."
+
+# ── Default: Ask for anything not explicitly allowed/denied ──────────────────
+# In non-interactive (pipe) mode, ask_user = deny, so unrecognized tools
+# are effectively blocked without silently failing.
+
+[[rule]]
+toolName = "*"
+decision = "ask_user"
+priority = 1

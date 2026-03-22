@@ -248,6 +248,9 @@ function detectGeminiModel(): string {
 
 const GEMINI_MODEL = detectGeminiModel();
 
+// Path to the relay-readonly policy file (allows read+search, denies writes)
+const GEMINI_RELAY_POLICY = path.join(__dirname, '..', '.gemini', 'policies', 'relay-readonly.toml');
+
 // ─── CLI Configs ────────────────────────────────────────────────────────────
 
 const CLI_CONFIGS: Record<string, CliConfig> = {
@@ -261,7 +264,11 @@ const CLI_CONFIGS: Record<string, CliConfig> = {
   },
   gemini: {
     command: 'gemini',
-    args: ['--model', GEMINI_MODEL, '--approval-mode', 'yolo'],
+    args: [
+      '--model', GEMINI_MODEL,
+      '--approval-mode', 'yolo',
+      '--policy', GEMINI_RELAY_POLICY,
+    ],
     responseFrom: 'stdout',
     extractResponse: extractGeminiResponse,
     timeoutMs: 0, // no timeout — Gemini deep thinking + web search can take long
