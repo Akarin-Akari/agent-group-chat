@@ -222,6 +222,32 @@ function ensureCodexMinimalHome(): void {
 // Initialize on module load
 ensureCodexMinimalHome();
 
+// ─── Gemini Model Detection ──────────────────────────────────────────────────
+
+/**
+ * Read the user's preferred Gemini model from ~/.gemini/settings.json.
+ * Never writes to the file — read-only detection.
+ */
+function detectGeminiModel(): string {
+  const defaultModel = 'gemini-2.5-pro';
+  try {
+    const home = process.env.USERPROFILE || process.env.HOME || '';
+    const settingsPath = path.join(home, '.gemini', 'settings.json');
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      const model = settings?.model?.name;
+      if (model) {
+        console.error(`[cli-relay] 🔍 Detected Gemini model from settings: ${model}`);
+        return model;
+      }
+    }
+  } catch {}
+  console.error(`[cli-relay] 🔍 Using default Gemini model: ${defaultModel}`);
+  return defaultModel;
+}
+
+const GEMINI_MODEL = detectGeminiModel();
+
 // ─── CLI Configs ────────────────────────────────────────────────────────────
 
 const CLI_CONFIGS: Record<string, CliConfig> = {
@@ -235,7 +261,7 @@ const CLI_CONFIGS: Record<string, CliConfig> = {
   },
   gemini: {
     command: 'gemini',
-    args: ['--approval-mode', 'plan'],
+    args: ['--model', GEMINI_MODEL, '--approval-mode', 'plan'],
     responseFrom: 'stdout',
     extractResponse: extractGeminiResponse,
     timeoutMs: 300_000, // 5 min max (Gemini may use deep thinking + web search)
