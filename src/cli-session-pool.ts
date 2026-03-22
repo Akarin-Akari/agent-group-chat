@@ -166,35 +166,44 @@ function ensureCodexMinimalHome(): void {
   try {
     fs.mkdirSync(CODEX_MINIMAL_HOME, { recursive: true });
 
-    // ── config.toml (minimal — no mcp_servers) ────────────────────────────
+    // ── Detect model from main Codex config ──────────────────────────────
+    const home = process.env.USERPROFILE || process.env.HOME || '';
+    const mainConfigPath = path.join(home, '.codex', 'config.toml');
+    let model = 'o3';  // safe default
+    try {
+      if (fs.existsSync(mainConfigPath)) {
+        const mainConfig = fs.readFileSync(mainConfigPath, 'utf-8');
+        const match = mainConfig.match(/^model\s*=\s*"([^"]+)"/m);
+        if (match) model = match[1];
+      }
+    } catch {}
+
+    // ── config.toml (always rewrite to keep model in sync) ──────────────
     const configPath = path.join(CODEX_MINIMAL_HOME, 'config.toml');
-    if (!fs.existsSync(configPath)) {
-      fs.writeFileSync(
-        configPath,
-        [
-          '# Minimal Codex config for group-chat relay calls (no MCP servers)',
-          'model = "gpt-5.3-codex"',
-          'model_reasoning_effort = "xhigh"',
-          'windows_wsl_setup_acknowledged = true',
-          'personality = "pragmatic"',
-          '',
-          '[features]',
-          'experimental_windows_sandbox = true',
-          'unified_exec = true',
-          'shell_snapshot = true',
-          'powershell_utf8 = true',
-          'steer = true',
-          '',
-        ].join('\n'),
-        'utf-8',
-      );
-      console.error(`[cli-relay] 📝 Created minimal config.toml at ${configPath}`);
-    }
+    fs.writeFileSync(
+      configPath,
+      [
+        '# Minimal Codex config for group-chat relay calls (no MCP servers)',
+        `model = "${model}"`,
+        'model_reasoning_effort = "high"',
+        'windows_wsl_setup_acknowledged = true',
+        'personality = "pragmatic"',
+        '',
+        '[features]',
+        'experimental_windows_sandbox = true',
+        'unified_exec = true',
+        'shell_snapshot = true',
+        'powershell_utf8 = true',
+        'steer = true',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    console.error(`[cli-relay] 📝 Codex minimal config: model=${model} at ${configPath}`);
 
     // ── auth.json (copy from ~/.codex/auth.json) ──────────────────────────
     const authDst = path.join(CODEX_MINIMAL_HOME, 'auth.json');
     if (!fs.existsSync(authDst)) {
-      const home = process.env.USERPROFILE || process.env.HOME || '';
       const authSrc = path.join(home, '.codex', 'auth.json');
       if (fs.existsSync(authSrc)) {
         fs.copyFileSync(authSrc, authDst);
@@ -226,7 +235,7 @@ const CLI_CONFIGS: Record<string, CliConfig> = {
   },
   gemini: {
     command: 'gemini',
-    args: ['--sandbox', '--approval-mode', 'plan'],
+    args: ['--approval-mode', 'plan'],
     responseFrom: 'stdout',
     extractResponse: extractGeminiResponse,
     timeoutMs: 300_000, // 5 min max (Gemini may use deep thinking + web search)
